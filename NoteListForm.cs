@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
-using System.IO;
 
 using Timer = System.Windows.Forms.Timer;
 
@@ -27,30 +26,24 @@ public class NoteListForm : Form
     private const int CardRadius = 24;
 
     private FlowLayoutPanel _list = null!;
-    private Label _emptyHint = null!;
+    private Panel _emptyPanel = null!;
+    private Label _statusLabel = null!;
     private readonly Dictionary<string, Form1> _openWindows = new();
     private SwipeCard? _activeCard;
-    // 窗口缩放防抖定时器 / Debounce timer for window resizing.
     private readonly Timer _resizeTimer = new() { Interval = 120 };
 
     public NoteListForm()
     {
-        Text = "贴窗便签";
-        Size = new Size(440, 600);
+        Text = "随手记";
+        Size = new Size(440, 640);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = BgColor;
         Font = new Font("Microsoft YaHei UI", 9.5f);
         DoubleBuffered = true;
-        MinimumSize = new Size(340, 400);
+        MinimumSize = new Size(340, 450);
 
-        _resizeTimer.Tick += (_, _) =>
-        {
-            _resizeTimer.Stop();
-            if (WindowState != FormWindowState.Minimized)
-                ReloadList();
-        };
-        // 从当前 exe 中提取图标 / Extract icon from the current exe.
-        this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        // 提取内嵌的图标作为软件图标 / Extract embedded icon.
+        try { this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         _resizeTimer.Tick += (_, _) =>
         {
@@ -65,10 +58,11 @@ public class NoteListForm : Form
 
     private void BuildUi()
     {
+        // ================= 顶部头部区 / Header =================
         var header = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 76,
+            Height = 84,
             BackColor = Color.White,
         };
         header.Paint += (_, e) =>
@@ -79,8 +73,8 @@ public class NoteListForm : Form
 
         var title = new Label
         {
-            Text = "我的便签",
-            Font = new Font("Microsoft YaHei UI", 15f, FontStyle.Bold),
+            Text = "随手记",
+            Font = new Font("Microsoft YaHei UI", 18f, FontStyle.Bold),
             ForeColor = TextColor,
             AutoSize = true,
             Location = new Point(24, 16),
@@ -89,17 +83,17 @@ public class NoteListForm : Form
         var subtitle = new Label
         {
             Text = "让灵感跟随窗口",
-            Font = new Font("Microsoft YaHei UI", 8.5f),
+            Font = new Font("Microsoft YaHei UI", 9f),
             ForeColor = SubTextColor,
             AutoSize = true,
-            Location = new Point(25, 44),
+            Location = new Point(26, 50),
         };
 
         var newBtn = new Button
         {
-            Text = "＋ 新建",
-            Size = new Size(92, 36),
-            Location = new Point(320, 20),
+            Text = "＋ 新建便签",
+            Size = new Size(100, 38),
+            Location = new Point(320, 22),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(72, 176, 116),
             ForeColor = Color.White,
@@ -116,8 +110,33 @@ public class NoteListForm : Form
         header.Controls.Add(subtitle);
         header.Controls.Add(newBtn);
         header.Resize += (_, _) =>
-            newBtn.Location = new Point(header.Width - newBtn.Width - 24, 20);
+            newBtn.Location = new Point(header.Width - newBtn.Width - 24, 22);
 
+        // ================= 底部状态栏 / Footer =================
+        var footer = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 36,
+            BackColor = Color.White,
+        };
+        footer.Paint += (_, e) =>
+        {
+            using var pen = new Pen(Color.FromArgb(234, 235, 238), 1);
+            e.Graphics.DrawLine(pen, 0, 0, footer.Width, 0);
+        };
+
+        _statusLabel = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "共 0 条便签",
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(24, 0, 0, 0),
+            Font = new Font("Microsoft YaHei UI", 8.5f),
+            ForeColor = SubTextColor,
+        };
+        footer.Controls.Add(_statusLabel);
+
+        // ================= 列表区 / List =================
         _list = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -129,16 +148,61 @@ public class NoteListForm : Form
         };
         _list.MouseDown += (_, _) => CloseActiveCard();
 
-        _emptyHint = new Label
+        // ================= 空状态提示 / Empty State =================
+        _emptyPanel = new Panel
         {
-            Text = "还没有便签，点击右上角“＋ 新建”开始记录",
-            ForeColor = SubTextColor,
-            Font = new Font("Microsoft YaHei UI", 10f),
-            AutoSize = true,
-            Margin = new Padding(4, 24, 0, 0),
+            Dock = DockStyle.Fill,
+            BackColor = BgColor,
+            Visible = false,
         };
 
+        var emptyIcon = new Label
+        {
+            Text = "📝",
+            Font = new Font("Segoe UI Emoji", 48f),
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Size = new Size(200, 80),
+            Location = new Point(120, 160),
+            ForeColor = Color.FromArgb(200, 205, 215),
+        };
+
+        var emptyTitle = new Label
+        {
+            Text = "这里空空如也",
+            Font = new Font("Microsoft YaHei UI", 12f, FontStyle.Bold),
+            ForeColor = TextColor,
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Size = new Size(200, 30),
+            Location = new Point(120, 250),
+        };
+
+        var emptyHint = new Label
+        {
+            Text = "点击右上角“新建便签”\n记录你的第一条灵感",
+            Font = new Font("Microsoft YaHei UI", 9.5f),
+            ForeColor = SubTextColor,
+            AutoSize = false,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Size = new Size(200, 50),
+            Location = new Point(120, 285),
+        };
+
+        _emptyPanel.Controls.Add(emptyIcon);
+        _emptyPanel.Controls.Add(emptyTitle);
+        _emptyPanel.Controls.Add(emptyHint);
+        
+        _emptyPanel.Resize += (_, _) =>
+        {
+            emptyIcon.Left = (_emptyPanel.Width - emptyIcon.Width) / 2;
+            emptyTitle.Left = (_emptyPanel.Width - emptyTitle.Width) / 2;
+            emptyHint.Left = (_emptyPanel.Width - emptyHint.Width) / 2;
+        };
+
+        Controls.Add(_emptyPanel);
         Controls.Add(_list);
+        Controls.Add(footer);
         Controls.Add(header);
 
         Resize += (_, _) =>
@@ -155,12 +219,17 @@ public class NoteListForm : Form
         var notes = NoteStorage.LoadAll();
         notes.Sort((a, b) => b.UpdatedAt.CompareTo(a.UpdatedAt));
 
+        _statusLabel.Text = $"共 {notes.Count} 条便签";
+
         if (notes.Count == 0)
         {
-            _list.Controls.Add(_emptyHint);
+            _emptyPanel.Visible = true;
+            _emptyPanel.BringToFront();
             return;
         }
 
+        _emptyPanel.Visible = false;
+        
         foreach (var note in notes)
             _list.Controls.Add(BuildCard(note));
     }
@@ -170,7 +239,6 @@ public class NoteListForm : Form
         var palette = NoteColors.Get(note.ColorKey);
         int cardWidth = _list.ClientSize.Width - 52;
 
-        // 裁剪容器
         var container = new Panel
         {
             Width = cardWidth,
@@ -179,7 +247,6 @@ public class NoteListForm : Form
             Margin = new Padding(0, 0, 0, 12),
         };
 
-        // 滑动层，包含卡片和操作区
         var slider = new Panel
         {
             Left = 0,
@@ -189,7 +256,6 @@ public class NoteListForm : Form
             BackColor = BgColor,
         };
 
-        // 卡片本体（左侧半胶囊）
         var card = new RoundedPanel
         {
             Left = 0,
@@ -257,7 +323,7 @@ public class NoteListForm : Form
 
         var badge = new RoundedLabel
         {
-            Text = note.IsBound ? "已绑定" : "未绑定",
+            Text = note.IsBound ? "已绑定" : "自由",
             Font = new Font("Microsoft YaHei UI", 7.5f),
             ForeColor = note.IsBound ? Color.White : Color.FromArgb(120, 124, 132),
             BackColor = note.IsBound ? palette.Display : Color.FromArgb(238, 239, 242),
@@ -274,7 +340,6 @@ public class NoteListForm : Form
         card.Controls.Add(timeLabel);
         card.Controls.Add(badge);
 
-        // 操作区（右侧半胶囊，水平并排）
         var actions = new Panel
         {
             Left = cardWidth,
@@ -284,15 +349,12 @@ public class NoteListForm : Form
             BackColor = BgColor,
         };
 
-        // 暖色系：复制浅暖、删除暖红
         var copyColor = Color.FromArgb(240, 200, 140);
         var deleteColor = Color.FromArgb(224, 128, 108);
 
         int halfWidth = ActionWidth / 2;
         
-        // 左侧按钮：直角，无圆角
         var copyBtn = BuildActionButton("复制", copyColor, 0, halfWidth, RoundedSide.None);
-        // 右侧按钮：仅右外侧圆角
         var deleteBtn = BuildActionButton("删除", deleteColor, halfWidth, halfWidth, RoundedSide.RightOnly);
 
         copyBtn.Click += (_, _) =>
@@ -421,8 +483,7 @@ public class NoteListForm : Form
             Id = Guid.NewGuid().ToString("N"),
             Text = note.Text,
             ColorKey = note.ColorKey,
-            Width = note.Width,
-            Height = note.Height,
+            SizeMode = note.SizeMode, // 保留原尺寸模式
             FreeX = note.FreeX + 24,
             FreeY = note.FreeY + 24,
             CreatedAt = DateTime.Now,

@@ -57,8 +57,7 @@ public partial class Form1 : Form
     private struct RECT
     {
         public int Left, Top, Right, Bottom;
-        public bool Equals(RECT o) =>
-            Left == o.Left && Top == o.Top && Right == o.Right && Bottom == o.Bottom;
+        public bool Equals(RECT o) => Left == o.Left && Top == o.Top && Right == o.Right && Bottom == o.Bottom;
     }
 
     private const uint EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
@@ -98,6 +97,7 @@ public partial class Form1 : Form
 
     private Panel _header = null!;
     private Label _bindDot = null!;
+    private Button _sizeButton = null!;
     private Button _colorButton = null!;
     private Button _pinButton = null!;
     private Button _closeButton = null!;
@@ -110,12 +110,9 @@ public partial class Form1 : Form
     {
         _data = data;
         _palette = NoteColors.Get(_data.ColorKey);
-
-        // 加载图标
-        try {
-            this.Icon = new Icon(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.ico"));
-        } catch { }
         
+        try { this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+
         InitializeUI();
         LoadNote();
     }
@@ -126,17 +123,14 @@ public partial class Form1 : Form
         ShowInTaskbar = false;
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
-        Size = new Size(340, 260);
         BackColor = _palette.Back;
         Font = new Font("Microsoft YaHei UI", 9.5f);
         DoubleBuffered = true;
+        
+        Size = new Size(340, 260);
 
         _saveTimer = new Timer { Interval = 600 };
-        _saveTimer.Tick += (_, _) =>
-        {
-            _saveTimer.Stop();
-            SaveNow();
-        };
+        _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); SaveNow(); };
 
         _header = new Panel
         {
@@ -149,24 +143,28 @@ public partial class Form1 : Form
         {
             Text = "●",
             AutoSize = false,
-            Size = new Size(20, 20),
-            Location = new Point(8, 7),
+            Size = new Size(16, 26),
             ForeColor = ColorIdle,
             Font = new Font("Segoe UI", 10f),
             TextAlign = ContentAlignment.MiddleCenter,
             BackColor = Color.Transparent,
         };
 
-        _colorButton = CreateIconButton("🎨", new Point(Size.Width - 110, 4));
+        // 按钮宽度统一为 28
+        _sizeButton = CreateIconButton("⛶", new Point(0, 4));
+        _sizeButton.Click += ShowSizeMenu;
+
+        _colorButton = CreateIconButton("🎨", new Point(0, 4));
         _colorButton.Click += ShowColorMenu;
 
-        _pinButton = CreateIconButton("📌", new Point(Size.Width - 74, 4));
+        _pinButton = CreateIconButton("📌", new Point(0, 4));
         _pinButton.Click += OnPinButtonClick;
 
-        _closeButton = CreateIconButton("✕", new Point(Size.Width - 38, 4));
+        _closeButton = CreateIconButton("✕", new Point(0, 4));
         _closeButton.Click += (_, _) => Close();
 
         _header.Controls.Add(_bindDot);
+        _header.Controls.Add(_sizeButton);
         _header.Controls.Add(_colorButton);
         _header.Controls.Add(_pinButton);
         _header.Controls.Add(_closeButton);
@@ -189,11 +187,7 @@ public partial class Form1 : Form
             DetectUrls = false,
             AcceptsTab = true,
         };
-        _noteBox.TextChanged += (_, _) =>
-        {
-            UpdatePlaceholder();
-            ScheduleSave();
-        };
+        _noteBox.TextChanged += (_, _) => { UpdatePlaceholder(); ScheduleSave(); };
         _noteBox.GotFocus += (_, _) => UpdatePlaceholder();
         _noteBox.LostFocus += (_, _) => UpdatePlaceholder();
 
@@ -233,6 +227,41 @@ public partial class Form1 : Form
         AttachDragHandlers(_header);
         AttachDragHandlers(_bindDot);
         AttachDragHandlers(_status);
+        
+        // 顶栏尺寸变化时，重新排版按钮
+        _header.Resize += (_, _) => LayoutHeaderButtons();
+    }
+
+    // 动态排版顶栏
+    private void LayoutHeaderButtons()
+    {
+        int btnSize = 28;
+        int gap = 2;
+        int rightPadding = 4;
+
+        // 从右往左排：关闭 -> 图钉 -> 颜色 -> 尺寸
+        int x = _header.Width - rightPadding - btnSize;
+        _closeButton.Location = new Point(x, 4);
+        
+        x -= (btnSize + gap);
+        _pinButton.Location = new Point(x, 4);
+        
+        x -= (btnSize + gap);
+        _colorButton.Location = new Point(x, 4);
+        
+        x -= (btnSize + gap);
+        _sizeButton.Location = new Point(x, 4);
+
+        // 剩下的空间给左侧状态圆点。如果空间实在太小（比如极窄的竖屏），直接隐藏圆点
+        if (x > 20)
+        {
+            _bindDot.Visible = true;
+            _bindDot.Location = new Point(4, 4);
+        }
+        else
+        {
+            _bindDot.Visible = false;
+        }
     }
 
     private Button CreateIconButton(string text, Point loc)
@@ -240,10 +269,10 @@ public partial class Form1 : Form
         var b = new Button
         {
             Text = text,
-            Size = new Size(30, 26),
+            Size = new Size(28, 26), // 宽度稍微缩窄以适应极窄尺寸
             Location = loc,
             FlatStyle = FlatStyle.Flat,
-            Font = new Font("Segoe UI Emoji", 10f),
+            Font = new Font("Segoe UI Emoji", 9f),
             BackColor = _palette.Header,
             ForeColor = _palette.Text,
             TabStop = false,
@@ -255,6 +284,61 @@ public partial class Form1 : Form
         return b;
     }
 
+    // ---------- 尺寸切换 ----------
+    private void ShowSizeMenu(object? sender, EventArgs e)
+    {
+        var menu = new ContextMenuStrip { ShowImageMargin = false };
+        
+        var sqMenu = new ToolStripMenuItem("方形 (正方形)");
+        sqMenu.DropDownItems.Add("小", null, (_, _) => ApplySizeMode(NoteSizeMode.SquareSmall));
+        sqMenu.DropDownItems.Add("中", null, (_, _) => ApplySizeMode(NoteSizeMode.SquareMedium));
+        sqMenu.DropDownItems.Add("大", null, (_, _) => ApplySizeMode(NoteSizeMode.SquareLarge));
+
+        var landMenu = new ToolStripMenuItem("横向 (横长方形)");
+        landMenu.DropDownItems.Add("小", null, (_, _) => ApplySizeMode(NoteSizeMode.LandscapeSmall));
+        landMenu.DropDownItems.Add("中", null, (_, _) => ApplySizeMode(NoteSizeMode.LandscapeMedium));
+        landMenu.DropDownItems.Add("大", null, (_, _) => ApplySizeMode(NoteSizeMode.LandscapeLarge));
+
+        var portMenu = new ToolStripMenuItem("竖向 (竖长方形)");
+        portMenu.DropDownItems.Add("小", null, (_, _) => ApplySizeMode(NoteSizeMode.PortraitSmall));
+        portMenu.DropDownItems.Add("中", null, (_, _) => ApplySizeMode(NoteSizeMode.PortraitMedium));
+        portMenu.DropDownItems.Add("大", null, (_, _) => ApplySizeMode(NoteSizeMode.PortraitLarge));
+
+        menu.Items.Add(sqMenu);
+        menu.Items.Add(landMenu);
+        menu.Items.Add(portMenu);
+        menu.Show(_sizeButton, new Point(-60, _sizeButton.Height));
+    }
+
+    private void ApplySizeMode(NoteSizeMode mode)
+    {
+        _data.SizeMode = mode;
+        ApplySizeFromMode(mode);
+
+        if (_targetHwnd != IntPtr.Zero) CommitDrag();
+        SaveNow();
+    }
+
+    private void ApplySizeFromMode(NoteSizeMode mode)
+    {
+        switch (mode)
+        {
+            // 方形
+            case NoteSizeMode.SquareSmall:    Size = new Size(180, 180); break;
+            case NoteSizeMode.SquareMedium:   Size = new Size(260, 260); break;
+            case NoteSizeMode.SquareLarge:    Size = new Size(340, 340); break;
+            // 横向
+            case NoteSizeMode.LandscapeSmall: Size = new Size(240, 140); break;
+            case NoteSizeMode.LandscapeMedium:Size = new Size(320, 180); break;
+            case NoteSizeMode.LandscapeLarge: Size = new Size(420, 240); break;
+            // 竖向
+            case NoteSizeMode.PortraitSmall:  Size = new Size(140, 240); break;
+            case NoteSizeMode.PortraitMedium: Size = new Size(180, 320); break;
+            case NoteSizeMode.PortraitLarge:  Size = new Size(240, 420); break;
+        }
+    }
+
+    // ---------- 其它原有方法 ----------
     private void ShowColorMenu(object? sender, EventArgs e)
     {
         var menu = new ContextMenuStrip { ShowImageMargin = false };
@@ -270,7 +354,7 @@ public partial class Form1 : Form
             item.Click += (_, _) => ApplyColor(captured);
             menu.Items.Add(item);
         }
-        menu.Show(_colorButton, new Point(0, _colorButton.Height));
+        menu.Show(_colorButton, new Point(-20, _colorButton.Height));
     }
 
     private void ApplyColor(string key)
@@ -288,7 +372,7 @@ public partial class Form1 : Form
         _status.BackColor = _palette.Back;
         _status.ForeColor = _palette.Muted;
 
-        foreach (var b in new[] { _colorButton, _pinButton, _closeButton })
+        foreach (var b in new[] { _sizeButton, _colorButton, _pinButton, _closeButton })
         {
             b.BackColor = _palette.Header;
             b.ForeColor = _palette.Text;
@@ -339,26 +423,21 @@ public partial class Form1 : Form
 
     private void LoadNote()
     {
-        Width = Math.Max(200, _data.Width);
-        Height = Math.Max(140, _data.Height);
+        ApplySizeFromMode(_data.SizeMode);
 
         _noteBox.Text = _data.Text;
-
         _offsetX = _data.OffsetX;
         _offsetY = _data.OffsetY;
 
         if (_data.IsBound && !string.IsNullOrEmpty(_data.BoundProcessName))
         {
-            var hwnd = FindWindowByProcessAndTitle(
-                _data.BoundProcessName!, _data.BoundWindowTitle ?? "");
-
+            var hwnd = FindWindowByProcessAndTitle(_data.BoundProcessName!, _data.BoundWindowTitle ?? "");
             if (hwnd != IntPtr.Zero)
             {
                 RestoreBinding(hwnd);
                 UpdatePlaceholder();
                 return;
             }
-
             _status.Text = "上次绑定的窗口未找到，已转为自由便签";
             _status.ForeColor = _palette.Muted;
             _data.IsBound = false;
@@ -376,20 +455,13 @@ public partial class Form1 : Form
         _lastRect = default;
         _winEventProc = WinEventCallback;
 
-        _hookLocation = SetWinEventHook(
-            EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE,
-            IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
-
-        _hookDestroy = SetWinEventHook(
-            EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY,
-            IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+        _hookLocation = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+        _hookDestroy = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
 
         if (!GetWindowRect(target, out var rect)) return;
         _lastRect = rect;
 
-        SetWindowPos(Handle, HWND_TOPMOST,
-            rect.Left + _offsetX, rect.Top + _offsetY, 0, 0,
-            SWP_NOSIZE | SWP_NOACTIVATE);
+        SetWindowPos(Handle, HWND_TOPMOST, rect.Left + _offsetX, rect.Top + _offsetY, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
 
         _bindDot.ForeColor = ColorAccent;
         _pinButton.Text = "📍";
@@ -406,8 +478,6 @@ public partial class Form1 : Form
     private void SaveNow()
     {
         _data.Text = _noteBox.Text;
-        _data.Width = Width;
-        _data.Height = Height;
         _data.UpdatedAt = DateTime.Now;
 
         if (_targetHwnd != IntPtr.Zero)
@@ -428,7 +498,6 @@ public partial class Form1 : Form
             _data.FreeX = Location.X;
             _data.FreeY = Location.Y;
         }
-
         NoteStorage.Upsert(_data);
     }
 
@@ -439,7 +508,6 @@ public partial class Form1 : Form
             DetachFromTarget();
             return;
         }
-
         _isSelectingTarget = true;
         _status.Text = "点击任意窗口完成钉选…";
         _status.ForeColor = ColorAccent;
@@ -449,7 +517,6 @@ public partial class Form1 : Form
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
-
         if (!_isSelectingTarget) return;
 
         _isSelectingTarget = false;
@@ -464,7 +531,6 @@ public partial class Form1 : Form
             _status.ForeColor = _palette.Muted;
             return;
         }
-
         AttachToTarget(hwnd);
     }
 
@@ -474,13 +540,8 @@ public partial class Form1 : Form
         _lastRect = default;
         _winEventProc = WinEventCallback;
 
-        _hookLocation = SetWinEventHook(
-            EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE,
-            IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
-
-        _hookDestroy = SetWinEventHook(
-            EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY,
-            IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+        _hookLocation = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
+        _hookDestroy = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, IntPtr.Zero, _winEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
 
         if (!GetWindowRect(target, out var rect)) return;
 
@@ -490,31 +551,20 @@ public partial class Form1 : Form
         _offsetX = initialX - rect.Left;
         _offsetY = initialY - rect.Top;
 
-        SetWindowPos(Handle, HWND_TOPMOST, initialX, initialY, 0, 0,
-            SWP_NOSIZE | SWP_NOACTIVATE);
+        SetWindowPos(Handle, HWND_TOPMOST, initialX, initialY, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
 
         _lastRect = rect;
-
         _bindDot.ForeColor = ColorAccent;
         _pinButton.Text = "📍";
         _status.Text = $"已绑定: {GetWindowTitle(target)}";
         _status.ForeColor = ColorAccent;
-
         SaveNow();
     }
 
     private void DetachFromTarget()
     {
-        if (_hookLocation != IntPtr.Zero)
-        {
-            UnhookWinEvent(_hookLocation);
-            _hookLocation = IntPtr.Zero;
-        }
-        if (_hookDestroy != IntPtr.Zero)
-        {
-            UnhookWinEvent(_hookDestroy);
-            _hookDestroy = IntPtr.Zero;
-        }
+        if (_hookLocation != IntPtr.Zero) { UnhookWinEvent(_hookLocation); _hookLocation = IntPtr.Zero; }
+        if (_hookDestroy != IntPtr.Zero) { UnhookWinEvent(_hookDestroy); _hookDestroy = IntPtr.Zero; }
 
         _targetHwnd = IntPtr.Zero;
         _lastRect = default;
@@ -525,25 +575,21 @@ public partial class Form1 : Form
         _pinButton.Text = "📌";
         _status.Text = "自由便签 · 拖动顶栏移动";
         _status.ForeColor = _palette.Muted;
-
         SaveNow();
     }
 
-    private void WinEventCallback(IntPtr hWinEventHook, uint eventType,
-        IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
+    private void WinEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
         if (_targetHwnd == IntPtr.Zero) return;
 
         if (eventType == EVENT_OBJECT_LOCATIONCHANGE)
         {
-            if (idObject != OBJID_WINDOW) return;
-            if (hwnd != _targetHwnd) return;
+            if (idObject != OBJID_WINDOW || hwnd != _targetHwnd) return;
             SyncToTarget();
         }
         else if (eventType == EVENT_OBJECT_DESTROY)
         {
             if (hwnd != _targetHwnd) return;
-
             BeginInvoke(new Action(() =>
             {
                 DetachFromTarget();
@@ -554,22 +600,17 @@ public partial class Form1 : Form
 
     private void SyncToTarget()
     {
-        if (_targetHwnd == IntPtr.Zero) return;
-        if (_isDragging || _isCommittingDrag) return;
+        if (_targetHwnd == IntPtr.Zero || _isDragging || _isCommittingDrag) return;
         if (!GetWindowRect(_targetHwnd, out var rect)) return;
         if (rect.Equals(_lastRect)) return;
         _lastRect = rect;
 
-        SetWindowPos(Handle, HWND_TOPMOST,
-            rect.Left + _offsetX, rect.Top + _offsetY, 0, 0,
-            SWP_NOSIZE | SWP_NOACTIVATE);
+        SetWindowPos(Handle, HWND_TOPMOST, rect.Left + _offsetX, rect.Top + _offsetY, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
     }
 
     private void OnDragMouseDown(object? sender, MouseEventArgs e)
     {
-        if (e.Button != MouseButtons.Left) return;
-        if (_isSelectingTarget) return;
-
+        if (e.Button != MouseButtons.Left || _isSelectingTarget) return;
         _isDragging = true;
         _dragStartMouse = Cursor.Position;
         _dragStartLocation = Location;
@@ -578,20 +619,14 @@ public partial class Form1 : Form
     private void OnDragMouseMove(object? sender, MouseEventArgs e)
     {
         if (!_isDragging) return;
-
         var current = Cursor.Position;
-        Location = new Point(
-            _dragStartLocation.X + (current.X - _dragStartMouse.X),
-            _dragStartLocation.Y + (current.Y - _dragStartMouse.Y));
+        Location = new Point(_dragStartLocation.X + (current.X - _dragStartMouse.X), _dragStartLocation.Y + (current.Y - _dragStartMouse.Y));
     }
 
     private void OnDragMouseUp(object? sender, MouseEventArgs e)
     {
         if (!_isDragging) return;
-
-        if (_targetHwnd != IntPtr.Zero)
-            CommitDrag();
-
+        if (_targetHwnd != IntPtr.Zero) CommitDrag();
         _isDragging = false;
         SaveNow();
     }
@@ -604,20 +639,12 @@ public partial class Form1 : Form
         try
         {
             if (!GetWindowRect(_targetHwnd, out var rect)) return;
-
             _offsetX = Location.X - rect.Left;
             _offsetY = Location.Y - rect.Top;
-
-            SetWindowPos(Handle, HWND_TOPMOST,
-                rect.Left + _offsetX, rect.Top + _offsetY, 0, 0,
-                SWP_NOSIZE | SWP_NOACTIVATE);
-
+            SetWindowPos(Handle, HWND_TOPMOST, rect.Left + _offsetX, rect.Top + _offsetY, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE);
             _lastRect = rect;
         }
-        finally
-        {
-            _isCommittingDrag = false;
-        }
+        finally { _isCommittingDrag = false; }
     }
 
     public void CloseFromList()
@@ -631,31 +658,22 @@ public partial class Form1 : Form
     private static IntPtr FindWindowByProcessAndTitle(string processName, string title)
     {
         IntPtr found = IntPtr.Zero;
-
         EnumWindows((h, _) =>
         {
             if (!IsWindowVisible(h)) return true;
-
             GetWindowThreadProcessId(h, out var pid);
             try
             {
                 var proc = Process.GetProcessById((int)pid);
-                if (!proc.ProcessName.Equals(processName, StringComparison.OrdinalIgnoreCase))
-                    return true;
+                if (!proc.ProcessName.Equals(processName, StringComparison.OrdinalIgnoreCase)) return true;
             }
             catch { return true; }
 
             var raw = GetRawWindowTitle(h);
             if (raw.Length == 0) return true;
-
-            if (raw.Contains(title, StringComparison.OrdinalIgnoreCase))
-            {
-                found = h;
-                return false;
-            }
+            if (raw.Contains(title, StringComparison.OrdinalIgnoreCase)) { found = h; return false; }
             return true;
         }, IntPtr.Zero);
-
         return found;
     }
 
@@ -668,20 +686,14 @@ public partial class Form1 : Form
 
     private static string GetProcessName(IntPtr hwnd)
     {
-        try
-        {
-            var pid = GetWindowProcessId(hwnd);
-            return Process.GetProcessById((int)pid).ProcessName;
-        }
-        catch { return ""; }
+        try { return Process.GetProcessById((int)GetWindowProcessId(hwnd)).ProcessName; } catch { return ""; }
     }
 
     private static string GetWindowTitle(IntPtr hwnd)
     {
         try
         {
-            var pid = GetWindowProcessId(hwnd);
-            var proc = Process.GetProcessById((int)pid);
+            var proc = Process.GetProcessById((int)GetWindowProcessId(hwnd));
             var title = proc.MainWindowTitle;
             return title.Length > 20 ? title.Substring(0, 20) + "…" : title;
         }
