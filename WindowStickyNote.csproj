@@ -6,6 +6,9 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+        <!-- 增加这一行，指定应用程序图标 -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    
   </PropertyGroup>
 
 </Project>

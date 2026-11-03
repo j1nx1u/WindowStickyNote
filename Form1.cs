@@ -110,6 +110,12 @@ public partial class Form1 : Form
     {
         _data = data;
         _palette = NoteColors.Get(_data.ColorKey);
+
+        // 加载图标
+        try {
+            this.Icon = new Icon(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.ico"));
+        } catch { }
+        
         InitializeUI();
         LoadNote();
     }

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
+using System.IO;
 
 using Timer = System.Windows.Forms.Timer;
 
@@ -34,13 +35,22 @@ public class NoteListForm : Form
 
     public NoteListForm()
     {
-        Text = "便签";
+        Text = "贴窗便签";
         Size = new Size(440, 600);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = BgColor;
         Font = new Font("Microsoft YaHei UI", 9.5f);
         DoubleBuffered = true;
         MinimumSize = new Size(340, 400);
+
+        _resizeTimer.Tick += (_, _) =>
+        {
+            _resizeTimer.Stop();
+            if (WindowState != FormWindowState.Minimized)
+                ReloadList();
+        };
+        // 从当前 exe 中提取图标 / Extract icon from the current exe.
+        this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
         _resizeTimer.Tick += (_, _) =>
         {
@@ -78,7 +88,7 @@ public class NoteListForm : Form
 
         var subtitle = new Label
         {
-            Text = "记录想法，钉在窗口上",
+            Text = "让灵感跟随窗口",
             Font = new Font("Microsoft YaHei UI", 8.5f),
             ForeColor = SubTextColor,
             AutoSize = true,
@@ -247,7 +257,7 @@ public class NoteListForm : Form
 
         var badge = new RoundedLabel
         {
-            Text = note.IsBound ? "已绑定" : "自由",
+            Text = note.IsBound ? "已绑定" : "未绑定",
             Font = new Font("Microsoft YaHei UI", 7.5f),
             ForeColor = note.IsBound ? Color.White : Color.FromArgb(120, 124, 132),
             BackColor = note.IsBound ? palette.Display : Color.FromArgb(238, 239, 242),
