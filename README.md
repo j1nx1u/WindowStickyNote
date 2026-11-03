@@ -1,3 +1,9 @@
+<div align="right">
+  <b>🇨🇳 中文</b> | <a href="#-windowsticky---window-pinned-sticky-notes">🇬🇧 English</a>
+</div>
+
+<br />
+
 # 📌 WindowSticky - 窗口贴身便签
 
 > 一款专为“边看边写”设计的 Windows 桌面便签工具。不再是死板地贴在桌面上，而是**紧紧钉在你当前的工作窗口旁**。
@@ -22,8 +28,10 @@
 
 ## 📸 界面预览
 
-
-
+<!-- 建议在这里放一张你用 ScreenToGif 录制的演示动图或图片 -->
+<p align="center">
+  <i>（演示动图制作中，欢迎下载体验）</i>
+</p>
 
 ## 🚀 如何下载使用
 
